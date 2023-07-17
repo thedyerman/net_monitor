@@ -71,6 +71,8 @@ func runPingMonitor(ips []string) {
 		p := fastping.NewPinger()
 		p.MaxRTT = time.Second
 
+		responded := make(map[string]bool)
+
 		for _, ip := range ips {
 			ra, err := net.ResolveIPAddr("ip4:icmp", ip)
 			if err != nil {
@@ -84,6 +86,16 @@ func runPingMonitor(ips []string) {
 				log.Printf("WARNING: IP %s latency is %s which is greater than 50ms\n", addr.String(), rtt)
 			}
 			latency.With(prometheus.Labels{"ip": addr.String()}).Set(float64(rtt / time.Millisecond))
+			responded[addr.String()] = true
+		}
+
+		p.OnIdle = func() {
+			for _, ip := range ips {
+				if !responded[ip] {
+					log.Printf("ERROR: IP %s returned nil\n", ip)
+					latency.With(prometheus.Labels{"ip": ip}).Set(500)
+				}
+			}
 		}
 
 		err := p.Run()
